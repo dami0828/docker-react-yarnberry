@@ -1,0 +1,35 @@
+name: Deploy Frontend
+on:
+  push:
+    # 메인 브랜치에 푸쉬되었을때만 아래 작업들을 실행한다.
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      # 1. 도커에 로그인을 한다
+      - run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      # 2. 도커 이미지를 빌드한다
+      - run: docker build -t damlee/react-test -f Dockerfile.dev .
+      # 3. 이미지를 이용해서 컨테이너를 실행하고 test를 진행한다.
+      - run: docker run -e CI=true damlee/react-test yarn test
+
+      # 4. EB에 보낼 파일들을 압축한다.
+      - name: Generate deployment package
+        run: zip -r deploy.zip . -x '*.git*'
+
+      # 5. EB에 배포하기 위한 셋팅
+      - name: Deploy to EB
+        uses: einaregilsson/beanstalk-deploy@v18
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
+          application_name: docker-react-yarnberry
+          environment_name: Docker-react-yarnberry-env
+          existing_bucket_name: elasticbeanstalk-ap-northeast-2-590183869725
+          region: ap-northeast-2
+          version_label: ${{ github.sha }}
+          deployment_package: deploy.zip
